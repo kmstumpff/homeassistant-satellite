@@ -119,6 +119,10 @@ class HAConnection:
             "Authenticated to Home Assistant version %s", message.get("ha_version")
         )
 
+    async def __reconnect(self, exc_type, exc) -> None:
+        await self.__aexit__(exc_type, exc, None)
+        await self.__aenter__()
+
     # -------------------------------------------------------------------------
     # Public functions to communicate with HA
     # -------------------------------------------------------------------------
@@ -145,7 +149,10 @@ class HAConnection:
 
             _LOGGER.debug("send_json() message=%s", message)
 
-            await self.__websocket.send_json(message)
+            try:
+                await self.__websocket.send_json(message)
+            except ConnectionResetError as ex:
+                await self.__reconnect(ConnectionResetError, ex)
 
             while True:
                 response = await queue.get()
@@ -164,4 +171,7 @@ class HAConnection:
         """Send binary message (without response)"""
 
         assert self.__websocket is not None
-        await self.__websocket.send_bytes(bts)
+        try:
+            await self.__websocket.send_bytes(bts)
+        except ConnectionResetError as ex:
+            await self.__reconnect(ConnectionResetError, ex)
